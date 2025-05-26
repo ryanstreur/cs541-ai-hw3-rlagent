@@ -9,11 +9,11 @@ struct Args {
     grid_dimensions: usize,
 
     /// Number of cans to populate the grid with.
-    #[arg(short, long, default_value_t = 20)]
+    #[arg(short, long, default_value_t = 30)]
     initial_can_count: usize,
 
     /// Number of episodes
-    #[arg(short, long, default_value_t = 100)]
+    #[arg(short, long, default_value_t = 5000)]
     n_episodes: usize,
 
     /// Number of steps in each episode
@@ -31,7 +31,6 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    println!("Hello, world!");
 
     let mut robby = Robot::new();
 
@@ -49,18 +48,20 @@ fn main() {
             let p = environment.create_percept();
             let a = robby.select_action(&p);
             let reward_amount = environment.calculate_reward(&a);
-            robby.reward(reward_amount);
             episode_reward += reward_amount;
             environment.transition_state(&a);
+            let resulting_p = environment.create_percept();
+            robby.reward(reward_amount, args.eta, args.gamma, &resulting_p);
             episode_actions.push(a);
         }
 
         println!("Episode Reward: {}", episode_reward);
-        let actions_string = episode_actions.iter().map(|a| a.to_string()).collect::<Vec<String>>().join("");
-        println!("Actions: {}", actions_string);
+        println!("Crashes: {}", environment.crash_count);
+        // let actions_string = episode_actions
+        //     .iter()
+        //     .map(|a| a.to_string())
+        //     .collect::<Vec<String>>()
+        //     .join("");
+        // println!("Actions: {}", actions_string);
     }
-}
-
-fn print_summary() {
-    println!("Ran for ")
 }

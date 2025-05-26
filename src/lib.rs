@@ -1,11 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
-    mem,
-    panic::Location,
 };
 
-use rand::{distr::slice::Empty, random_range};
+use rand::random_range;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
 enum LocationValue {
@@ -26,19 +24,20 @@ impl From<i32> for LocationValue {
     }
 }
 
+impl From<LocationValue> for String {
+    fn from(value: LocationValue) -> Self {
+        use LocationValue::*;
+        match value {
+            Empty => "E".to_string(),
+            Can => "C".to_string(),
+            Wall => "W".to_string(),
+        }
+    }
+}
+
 fn all_locations() -> Vec<LocationValue> {
     use LocationValue::*;
     vec![Empty, Can, Wall]
-}
-
-fn empty_location_map() -> HashMap<LocationValue, f32> {
-    let mut out: HashMap<LocationValue, f32> = HashMap::new();
-
-    for location in all_locations() {
-        out.insert(location, 0.0);
-    }
-
-    out
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -50,30 +49,53 @@ pub enum Action {
     PickUpCan,
 }
 
+pub fn all_actions() -> Vec<Action> {
+    use Action::*;
+    vec![MoveNorth, MoveSouth, MoveEast, MoveWest, PickUpCan]
+}
+
 impl Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let to_write = match self {
-          Self::MoveNorth => "N",
-          Self::MoveSouth => "S",
-          Self::MoveEast => "E",
-          Self::MoveWest => "W",
-          Self::PickUpCan => "P",
+            Self::MoveNorth => "N",
+            Self::MoveSouth => "S",
+            Self::MoveEast => "E",
+            Self::MoveWest => "W",
+            Self::PickUpCan => "P",
         };
 
         write!(f, "{}", to_write)
     }
 }
 
-fn empty_action_map() -> HashMap<Action, f32> {
-    use Action::*;
-    let mut out: HashMap<Action, f32> = HashMap::new();
-    let actions = vec![MoveNorth, MoveSouth, MoveEast, MoveWest, PickUpCan];
-
-    for a in actions {
-        out.insert(a, 0.0);
+impl From<usize> for Action {
+    fn from(value: usize) -> Self {
+        use Action::*;
+        match value {
+            0 => MoveNorth,
+            1 => MoveSouth,
+            2 => MoveEast,
+            3 => MoveWest,
+            _ => PickUpCan,
+        }
     }
+}
 
-    out
+impl From<Action> for usize {
+    fn from(value: Action) -> Self {
+        use Action::*;
+        match value {
+            MoveNorth => 0,
+            MoveSouth => 1,
+            MoveEast => 2,
+            MoveWest => 3,
+            PickUpCan => 4,
+        }
+    }
+}
+
+fn random_action() -> Action {
+    Action::from(random_range(0..5))
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -85,11 +107,40 @@ pub struct Percept {
     west: LocationValue,
 }
 
+/// Create a hash map mapping percepts to usize
+fn generate_percept_map() -> HashMap<Percept, usize> {
+    let mut out = HashMap::new();
+    let mut index: usize = 0;
+
+    for north in all_locations() {
+        for south in all_locations() {
+            for east in all_locations() {
+                for west in all_locations() {
+                    for current in all_locations() {
+                        let p = Percept {
+                            north,
+                            south,
+                            east,
+                            west,
+                            current,
+                        };
+                        out.insert(p, index);
+                        index += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    out
+}
+
 #[derive(Default)]
 pub struct Environment {
     pub grid_dimension: usize,
     pub initial_number_of_cans: usize,
     robot_coordinates: (usize, usize),
+    pub crash_count: usize,
     grid: Vec<Vec<LocationValue>>,
 }
 
@@ -103,6 +154,7 @@ impl Environment {
             grid_dimension,
             initial_number_of_cans,
             robot_coordinates,
+            crash_count: 0,
             grid: vec![vec![LocationValue::Empty; grid_dimension]; grid_dimension],
         }
     }
@@ -115,6 +167,7 @@ impl Environment {
             grid_dimension,
             initial_number_of_cans,
             robot_coordinates: (x, y),
+            crash_count: 0,
             grid: random_grid(grid_dimension, initial_number_of_cans),
         }
     }
@@ -185,7 +238,7 @@ impl Environment {
     }
 
     /// Given an action and the current state, determine the reward
-    pub fn calculate_reward(&self, a: &Action) -> f32 {
+    pub fn calculate_reward(&mut self, a: &Action) -> f32 {
         use Action::*;
 
         let (x, y) = self.robot_coordinates;
@@ -196,7 +249,10 @@ impl Environment {
                 _ => -1.0,
             },
             _ => match self.crash(a) {
-                true => -5.0,
+                true => {
+                    self.crash_count += 1;
+                    -5.0
+                }
                 false => 0.0,
             },
         }
@@ -254,19 +310,24 @@ impl Debug for Environment {
 
 impl Display for Environment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      let row_strings: Vec<String> = self.grid.iter().map(|row| {
-        let space_strings: Vec<String> = row.iter().map(|space| {
-          return match space {
-            LocationValue::Empty => "_".to_string(),
-            LocationValue::Can => "C".to_string(),
-            _ => "".to_string()
-          }
-        }).collect();
+        let row_strings: Vec<String> = self
+            .grid
+            .iter()
+            .map(|row| {
+                let space_strings: Vec<String> = row
+                    .iter()
+                    .map(|space| match space {
+                        LocationValue::Empty => "_".to_string(),
+                        LocationValue::Can => "C".to_string(),
+                        _ => "".to_string(),
+                    })
+                    .collect();
 
-        space_strings.join(" ")
-      }).collect();
+                space_strings.join(" ")
+            })
+            .collect();
 
-      write!(f, "{}", row_strings.join("\n"))
+        write!(f, "{}", row_strings.join("\n"))
     }
 }
 
@@ -293,65 +354,85 @@ fn random_grid(dimension: usize, number_of_cans: usize) -> Vec<Vec<LocationValue
 #[derive(Default)]
 pub struct Robot {
     previous_choice: Option<(Percept, Action)>,
-    q_matrix: HashMap<Percept, HashMap<Action, f32>>,
+    q_matrix: Vec<Vec<f32>>,
+    epsilon: f32,
+    percept_map: HashMap<Percept, usize>,
 }
 
 impl Robot {
     pub fn new() -> Self {
+        let number_of_possible_percepts = 3_usize.pow(5);
+        let number_of_actions = 5;
         Robot {
             previous_choice: None,
-            q_matrix: generate_q_matrix(),
+            q_matrix: vec![vec![0.0; number_of_actions]; number_of_possible_percepts],
+            epsilon: 0.02,
+            percept_map: generate_percept_map(),
         }
     }
 
     pub fn select_action(&mut self, p: &Percept) -> Action {
-        let mut selected_action_pair = (Action::PickUpCan, 0.0);
+        let r: f32 = random_range(0.0..1.0);
 
-        for (key, value) in &self.q_matrix[p] {
-            if *value >= selected_action_pair.1 {
-                println!("Choosing action {} over {}, {} > {}", key, selected_action_pair.0, value, selected_action_pair.1);
-                selected_action_pair = (key.clone(), value.clone());
+        let out = match self.epsilon > r || self.all_actions_same(p) {
+            true => random_action(),
+            false => self.max_action_for_percept(p).0,
+        };
+
+        self.previous_choice = Some((p.clone(), out.clone()));
+
+        out
+    }
+
+    pub fn all_actions_same(&self, p: &Percept) -> bool {
+        let percept_index = self.percept_map[p];
+        let actions = &self.q_matrix[percept_index];
+
+        actions
+            .iter()
+            .fold((actions[0], true), |acc, score| {
+                (*score, acc.1 && acc.0 == *score)
+            })
+            .1
+    }
+
+    pub fn max_action_for_percept(&self, p: &Percept) -> (Action, f32) {
+        let percept_index = self.percept_map[p];
+
+        let actions = &self.q_matrix[percept_index];
+
+        let mut max_score = actions[0];
+        let mut max_i = 0;
+        for (i, item) in actions.iter().enumerate().skip(1) {
+            if *item > max_score {
+                max_score = *item;
+                max_i = i;
             }
         }
 
-        self.previous_choice = Some((p.clone(), selected_action_pair.0.clone()));
-
-        selected_action_pair.0
+        (Action::from(max_i), max_score)
     }
 
-    pub fn reward(&mut self, reward_amount: f32) {
+    pub fn reward(
+        &mut self,
+        reward_amount: f32,
+        eta: f32,
+        gamma: f32,
+        resulting_percept: &Percept,
+    ) {
         if let Some((p, a)) = &self.previous_choice {
             // TODO fix this unwrap nightmare
             // TODO Add epsilon and deeper update logic
-            *self.q_matrix.get_mut(p).unwrap().get_mut(a).unwrap() += reward_amount;
+            let percept_index = self.percept_map[p];
+            let action_index = usize::from(a.clone());
+            let current_q = self.q_matrix[percept_index][action_index];
+
+            let max_aprime_q = self.max_action_for_percept(resulting_percept).1;
+
+            self.q_matrix[percept_index][action_index] =
+                current_q + eta * (reward_amount + gamma * max_aprime_q - current_q);
         }
     }
-}
-
-fn generate_q_matrix() -> HashMap<Percept, HashMap<Action, f32>> {
-    let mut out: HashMap<Percept, HashMap<Action, f32>> = HashMap::new();
-
-    for n in 0..3 {
-        for s in 0..3 {
-            for e in 0..3 {
-                for w in 0..3 {
-                    for c in 0..3 {
-                        let p = Percept {
-                            north: LocationValue::from(n),
-                            south: LocationValue::from(s),
-                            east: LocationValue::from(e),
-                            west: LocationValue::from(w),
-                            current: LocationValue::from(c),
-                        };
-
-                        out.insert(p, empty_action_map());
-                    }
-                }
-            }
-        }
-    }
-
-    out
 }
 
 #[test]
@@ -388,4 +469,10 @@ fn test_percept_creation() {
     assert_eq!(out_p.east, Wall);
     assert_eq!(out_p.current, Empty);
     assert_eq!(out_p.south, Empty);
+}
+
+#[test]
+fn test_percept_map_creation() {
+    let map = generate_percept_map();
+    assert_eq!(map.len(), 3_usize.pow(5));
 }
