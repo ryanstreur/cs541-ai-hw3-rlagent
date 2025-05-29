@@ -1,3 +1,5 @@
+use std::{fs::File, io::Write};
+
 use clap::Parser;
 use rl_agent::{Action, Environment, Robot};
 
@@ -9,7 +11,7 @@ struct Args {
     grid_dimensions: usize,
 
     /// Number of cans to populate the grid with.
-    #[arg(short, long, default_value_t = 30)]
+    #[arg(short, long, default_value_t = 50)]
     initial_can_count: usize,
 
     /// Number of episodes
@@ -29,13 +31,21 @@ struct Args {
     gamma: f32,
 }
 
-fn main() {
+struct EpisodeRecord {
+    episode_id: usize,
+    episode_reward: f32,
+    crash_count: usize,
+    running_average: f32,
+}
+
+fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     let mut robby = Robot::new();
 
-    for episode in 0..args.n_episodes {
-        println!("Episode {episode}:");
+    let mut episodes: Vec<EpisodeRecord> = Vec::with_capacity(args.n_episodes);
+
+    for episode_id in 0..args.n_episodes {
         let mut environment =
             Environment::new_randomized(args.grid_dimensions, args.initial_can_count);
 
@@ -55,13 +65,82 @@ fn main() {
             episode_actions.push(a);
         }
 
-        println!("Episode Reward: {}", episode_reward);
-        println!("Crashes: {}", environment.crash_count);
-        // let actions_string = episode_actions
-        //     .iter()
-        //     .map(|a| a.to_string())
-        //     .collect::<Vec<String>>()
-        //     .join("");
-        // println!("Actions: {}", actions_string);
+        let last_few: Vec<f32> = episodes[episode_id.saturating_sub(100)..episode_id]
+            .iter()
+            .map(|e| e.episode_reward)
+            .collect();
+        let mut sum: f32 = 0.0;
+        for record in &last_few {
+            sum += record;
+        }
+
+        let running_average = sum / last_few.len() as f32;
+
+        let record = EpisodeRecord {
+            episode_id,
+            episode_reward,
+            crash_count: environment.crash_count,
+            running_average,
+        };
+
+        episodes.push(record);
+
+        // reduce epsilon every 50 episodes
+        if (episode_id + 1) % 50 == 0 {
+          robby.epsilon *= 0.99;
+        }
     }
+
+    let episode_file_path = "episodes.csv";
+    let mut episodes_file = File::create(episode_file_path)?;
+    writeln!(
+        episodes_file,
+        "episode_id,episode_reward,running_avg,crash_count"
+    )?;
+
+    let episodes_string = episodes
+        .iter()
+        .map(|e| {
+            format!(
+                "{},{},{},{}",
+                e.episode_id, e.episode_reward, e.running_average, e.crash_count
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    write!(episodes_file, "{}", episodes_string)?;
+
+    let weight_file_path = "weights.csv";
+    let mut weights_file = File::create(weight_file_path)?;
+    write!(weights_file, "Current,North,South,East,West")?;
+    for i in 0..5 {
+        write!(weights_file, ",{}", Action::from(i))?;
+    }
+    writeln!(weights_file)?;
+
+    let x = robby
+        .percept_map
+        .iter()
+        .map(|(p, i)| {
+            format!(
+                "{},{},{},{},{},{},{},{},{},{}",
+                p.current,
+                p.north,
+                p.south,
+                p.east,
+                p.west,
+                robby.q_matrix[*i][0],
+                robby.q_matrix[*i][1],
+                robby.q_matrix[*i][2],
+                robby.q_matrix[*i][3],
+                robby.q_matrix[*i][4],
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    write!(weights_file, "{}", x)?;
+
+    Ok(())
 }

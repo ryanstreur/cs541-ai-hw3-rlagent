@@ -3,10 +3,10 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use rand::random_range;
+use rand::{random_range};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
-enum LocationValue {
+pub enum LocationValue {
     #[default]
     Empty,
     Can,
@@ -32,6 +32,18 @@ impl From<LocationValue> for String {
             Can => "C".to_string(),
             Wall => "W".to_string(),
         }
+    }
+}
+
+impl Display for LocationValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out_str = match self {
+            LocationValue::Empty => "E",
+            LocationValue::Can => "C",
+            LocationValue::Wall => "W",
+        };
+
+        write!(f, "{}", out_str)
     }
 }
 
@@ -98,13 +110,23 @@ fn random_action() -> Action {
     Action::from(random_range(0..5))
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Percept {
-    current: LocationValue,
-    north: LocationValue,
-    south: LocationValue,
-    east: LocationValue,
-    west: LocationValue,
+    pub current: LocationValue,
+    pub north: LocationValue,
+    pub south: LocationValue,
+    pub east: LocationValue,
+    pub west: LocationValue,
+}
+
+impl Display for Percept {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "C: {}; N: {}; S: {}; E: {}; W: {};",
+            self.current, self.north, self.south, self.east, self.west
+        )
+    }
 }
 
 /// Create a hash map mapping percepts to usize
@@ -159,7 +181,10 @@ impl Environment {
         }
     }
 
-    pub fn new_randomized(grid_dimension: usize, initial_number_of_cans: usize) -> Self {
+    pub fn new_randomized(
+        grid_dimension: usize,
+        initial_number_of_cans: usize,
+    ) -> Self {
         let x = random_range(0..grid_dimension);
         let y = random_range(0..grid_dimension);
 
@@ -294,7 +319,6 @@ impl Environment {
         }
     }
 
-    pub fn run_step(&mut self) {}
 }
 
 impl Debug for Environment {
@@ -354,9 +378,9 @@ fn random_grid(dimension: usize, number_of_cans: usize) -> Vec<Vec<LocationValue
 #[derive(Default)]
 pub struct Robot {
     previous_choice: Option<(Percept, Action)>,
-    q_matrix: Vec<Vec<f32>>,
-    epsilon: f32,
-    percept_map: HashMap<Percept, usize>,
+    pub q_matrix: Vec<Vec<f32>>,
+    pub epsilon: f32,
+    pub percept_map: HashMap<Percept, usize>,
 }
 
 impl Robot {
@@ -401,16 +425,23 @@ impl Robot {
 
         let actions = &self.q_matrix[percept_index];
 
+        let mut candidates: Vec<usize> = vec![];
+
         let mut max_score = actions[0];
-        let mut max_i = 0;
-        for (i, item) in actions.iter().enumerate().skip(1) {
-            if *item > max_score {
+        for (i, item) in actions.iter().enumerate() {
+            if *item == max_score {
+                candidates.push(i);
+            } else if *item > max_score {
+                candidates.clear();
+                candidates.push(i);
                 max_score = *item;
-                max_i = i;
             }
         }
 
-        (Action::from(max_i), max_score)
+        assert!(!candidates.is_empty());
+        let choice_index = random_range(0..candidates.len());
+        let out_action: Action = candidates[choice_index].into();
+        (out_action, max_score)
     }
 
     pub fn reward(
@@ -428,9 +459,9 @@ impl Robot {
             let current_q = self.q_matrix[percept_index][action_index];
 
             let max_aprime_q = self.max_action_for_percept(resulting_percept).1;
+            let new_value = current_q + eta * (reward_amount + gamma * max_aprime_q - current_q);
 
-            self.q_matrix[percept_index][action_index] =
-                current_q + eta * (reward_amount + gamma * max_aprime_q - current_q);
+            self.q_matrix[percept_index][action_index] = new_value;
         }
     }
 }
