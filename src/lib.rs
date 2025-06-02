@@ -223,27 +223,27 @@ impl Environment {
         p.current = self.grid[x][y];
 
         if x == 0 {
-            p.west = Wall;
+            p.south = Wall;
         } else {
-            p.west = self.grid[x - 1][y];
+            p.south = self.grid[x - 1][y];
         }
 
         if x == self.grid_dimension - 1 {
-            p.east = Wall;
+            p.north = Wall;
         } else {
-            p.east = self.grid[x + 1][y];
+            p.north = self.grid[x + 1][y];
         }
 
         if y == 0 {
-            p.south = Wall;
+            p.west = Wall;
         } else {
-            p.south = self.grid[x][y - 1];
+            p.west = self.grid[x][y - 1];
         }
 
         if y == self.grid_dimension - 1 {
-            p.north = Wall;
+            p.east = Wall;
         } else {
-            p.north = self.grid[y][y + 1];
+            p.east = self.grid[y][y + 1];
         }
 
         p
@@ -258,7 +258,7 @@ impl Environment {
 
         (*a == MoveEast && y >= self.grid_dimension - 1)
             || (*a == MoveWest && y == 0)
-            || (*a == MoveSouth && x >= self.grid_dimension - 1)
+            || (*a == MoveNorth && x >= self.grid_dimension - 1)
             || (*a == MoveSouth && x == 0)
     }
 
@@ -384,13 +384,13 @@ pub struct Robot {
 }
 
 impl Robot {
-    pub fn new() -> Self {
+    pub fn new(epsilon: f32) -> Self {
         let number_of_possible_percepts = 3_usize.pow(5);
         let number_of_actions = 5;
         Robot {
             previous_choice: None,
             q_matrix: vec![vec![0.0; number_of_actions]; number_of_possible_percepts],
-            epsilon: 0.02,
+            epsilon,
             percept_map: generate_percept_map(),
         }
     }
@@ -481,7 +481,7 @@ fn test_environment_creation() {
 #[test]
 fn test_percept_creation() {
     use LocationValue::*;
-    let mut rob = Robot::new();
+    let mut rob = Robot::new(0.1);
     let mut env = Environment::new(3, 0, (0, 0));
 
     env.grid[0][1] = Can;

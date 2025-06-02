@@ -41,7 +41,7 @@ struct EpisodeRecord {
 fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
-    let mut robby = Robot::new();
+    let mut robby = Robot::new(0.1);
 
     let mut episodes: Vec<EpisodeRecord> = Vec::with_capacity(args.n_episodes);
 
@@ -51,8 +51,6 @@ fn main() -> std::io::Result<()> {
 
         let mut episode_reward: f32 = 0.0;
         let mut episode_actions: Vec<Action> = Vec::new();
-
-        // println!("Initial environment: {:?}", environment);
 
         for _ in 0..args.m_steps {
             let p = environment.create_percept();

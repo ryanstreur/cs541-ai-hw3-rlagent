@@ -7,3 +7,6 @@ __pycache__
 # Added by cargo
 
 /target
+
+# Added by LibreOffice
+.~lock.*#
